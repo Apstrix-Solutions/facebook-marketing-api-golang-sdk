@@ -44,7 +44,7 @@ We assume you already have a Facebook Developer account and configured an `acces
 
 ```go
 import(
-	"github.com/justwatchcom/facebook-marketing-api-golang-sdk/marketing/v14"
+	"github.com/Apstrix-Solutions/facebook-marketing-api-golang-sdk/marketing/v14"
 )
 
 func main(){
