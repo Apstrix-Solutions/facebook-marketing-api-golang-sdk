@@ -49,6 +49,7 @@ func SetPageAccessToken(ctx context.Context, token string) context.Context {
 		return ctx
 	}
 
+	tk := "access_token"
 	return context.WithValue(ctx, tk, token)
 }
 
