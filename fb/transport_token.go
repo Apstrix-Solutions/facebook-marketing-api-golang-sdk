@@ -49,6 +49,12 @@ func SetPageAccessToken(ctx context.Context, token string) context.Context {
 		return ctx
 	}
 
+	tk := "access_token"
+
+	// fmt.Println("Transport Token context :", ctx)
+	// fmt.Println("Transport Token key :", tk)
+	// fmt.Println("Transport Token string :", token)
+
 	return context.WithValue(ctx, tk, token)
 }
 

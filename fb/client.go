@@ -45,6 +45,7 @@ func (c *Client) handleResponse(resp *http.Response, res interface{}, req []byte
 	buf := &bytes.Buffer{}
 	ec := &ErrorContainer{}
 	err := json.NewDecoder(io.TeeReader(resp.Body, buf)).Decode(ec)
+
 	if err != nil {
 		return err
 	} else if err = ec.GetError(); err != nil {
@@ -56,7 +57,6 @@ func (c *Client) handleResponse(resp *http.Response, res interface{}, req []byte
 
 		return fmt.Errorf("unexpected status %s", resp.Status)
 	}
-
 	return json.Unmarshal(buf.Bytes(), res)
 }
 

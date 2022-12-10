@@ -30,10 +30,10 @@ func NewRoute(version, format string, a ...interface{}) *RouteBuilder {
 func (rb *RouteBuilder) Fields(f ...string) *RouteBuilder {
 	if len(f) > 0 {
 		rb.v.Set("fields", strings.Join(f, ","))
+
 	} else {
 		rb.v.Del("fields")
 	}
-
 	return rb
 }
 
