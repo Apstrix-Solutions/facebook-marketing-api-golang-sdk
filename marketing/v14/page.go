@@ -17,7 +17,11 @@ func (ps *PageService) SetPageAccessToken(ctx context.Context, pageID string) (c
 	tc := struct {
 		AccessToken string `json:"access_token"`
 	}{}
+
+	fmt.Println("Url is : ", fb.NewRoute(Version, "/%s", pageID).Fields("access_token").String())
+
 	err := ps.c.GetJSON(ctx, fb.NewRoute(Version, "/%s", pageID).Fields("access_token").String(), &tc)
+
 	if err != nil {
 		return ctx, err
 	} else if tc.AccessToken == "" {
@@ -62,6 +66,8 @@ func (ps *PageService) GetPageBackedInstagramAccounts(ctx context.Context, pageI
 // GetClientPages returns all client pages.
 func (ps *PageService) GetClientPages(ctx context.Context, businessID string) ([]Page, error) {
 	res := []Page{}
+
+	fmt.Println(fb.NewRoute(Version, "/%s/client_pages", businessID))
 	route := fb.NewRoute(Version, "/%s/client_pages", businessID).Limit(1000).Fields(pageFields...)
 	err := ps.c.GetList(ctx, route.String(), &res)
 	if err != nil {
