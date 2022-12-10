@@ -1,4 +1,4 @@
-module github.com/justwatchcom/facebook-marketing-api-golang-sdk
+module github.com/Apstrix-Solutions/facebook-marketing-api-golang-sdk
 
 go 1.12
 
