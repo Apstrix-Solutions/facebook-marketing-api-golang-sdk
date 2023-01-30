@@ -20,6 +20,14 @@ type ImageService struct {
 	c *fb.Client
 }
 
+type FBAlbums struct {
+	Data []struct {
+		CreatedTime string `json:"created_time"`
+		Name        string `json:"name"`
+		ID          string `json:"id"`
+	} `json:"data"`
+}
+
 // ReadList writes all ad images from an account to res.
 func (is *ImageService) ReadList(ctx context.Context, act string, res chan<- Image) error {
 	jres := make(chan json.RawMessage)
@@ -51,6 +59,21 @@ func (is *ImageService) ReadList(ctx context.Context, act string, res chan<- Ima
 	return wg.Wait()
 }
 
+// Get Album List
+func (is *ImageService) AllAlbums(ctx context.Context, pageId string) (*FBAlbums, error) {
+
+	albs := FBAlbums{}
+
+	route := fb.NewRoute(Version, "/%s", pageId+"/albums")
+	err := is.c.GetJSON(ctx, route.String(), &albs)
+	if err != nil {
+		return nil, err
+	}
+
+	return &albs, nil
+
+}
+
 // Upload uploads an image to Facebook.
 func (is *ImageService) Upload(ctx context.Context, act, name string, r io.Reader) (*Image, error) {
 	fur := &fileUploadResponse{}
@@ -72,6 +95,31 @@ func (is *ImageService) Upload(ctx context.Context, act, name string, r io.Reade
 	im.ID = id
 
 	return im, nil
+}
+
+type AlbumImage struct {
+	AlbumId   string `json:"album_id,omitempty"`
+	Published bool   `json:"published"`
+	ImagePath string `json:"url,omitempty"`
+}
+
+// Upload uploads an image to Facebook.
+func (is *ImageService) UploadToAlbum(ctx context.Context, data AlbumImage) (interface{}, error) {
+
+	type imgResp struct {
+		Id string `json:"id"`
+	}
+
+	resp := imgResp{}
+
+	err := is.c.PostJSON(ctx, fb.NewRoute(Version, "/%s", data.AlbumId+"/photos").String(), data, &resp)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return resp, nil
+
 }
 
 func (is *ImageService) getImageID(s string) (string, error) {
