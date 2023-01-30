@@ -6,7 +6,7 @@ import (
 	"fmt"
 	"io"
 
-	"github.com/justwatchcom/facebook-marketing-api-golang-sdk/fb"
+	"github.com/Apstrix-Solutions/facebook-marketing-api-golang-sdk/fb"
 	"golang.org/x/sync/errgroup"
 )
 

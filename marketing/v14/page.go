@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"github.com/justwatchcom/facebook-marketing-api-golang-sdk/fb"
+	"github.com/Apstrix-Solutions/facebook-marketing-api-golang-sdk/fb"
 )
 
 // PageService contains all methods for working on pages.
@@ -144,4 +144,53 @@ type Page struct {
 type InstagramActor struct {
 	ID       string `json:"id"`
 	Username string `json:"username"`
+}
+
+// Lead Generation Form
+type LeadGen struct {
+	Name              string `json:"name"`
+	PageID            string `json:"page_id"`
+	FollowUpActionURL string `json:"follow_up_action_url"`
+	PrivacyPolicy     struct {
+		URL      string `json:"url"`
+		LinkText string `json:"link_text"`
+	} `json:"privacy_policy"`
+	ContextCard struct {
+		Title      string   `json:"title"`
+		Content    []string `json:"content"`
+		Style      string   `json:"style"`
+		CoverPhoto string   `json:"cover_photo_id"`
+	} `json:"context_card"`
+	ThankYouPage struct {
+		Title      string `json:"title"`
+		Body       string `json:"body"`
+		ButtonType string `json:"button_type"`
+		ButtonText string `json:"button_text"`
+		WebsiteURL string `json:"website_url"`
+	} `json:"thank_you_page"`
+	Questions []struct {
+		Key   string `json:"key"`
+		Type  string `json:"type"`
+		Label string `json:"label,omitempty"`
+	} `json:"questions"`
+}
+
+type LeadFormResp struct {
+	FormId string `json:"id"`
+}
+
+// Create LeadGen Form
+func (ps *PageService) CreateLeadAdForm(ctx context.Context, content LeadGen, id string) (*LeadFormResp, error) {
+
+	req := content
+	resp := LeadFormResp{}
+	err := ps.c.PostJSON(ctx, fb.NewRoute(Version, "/%s", id+"/leadgen_forms").String(), req, &resp)
+
+	if err != nil {
+		fmt.Println("Post Json Error : ", err)
+		return nil, err
+	}
+
+	return &resp, nil
+
 }

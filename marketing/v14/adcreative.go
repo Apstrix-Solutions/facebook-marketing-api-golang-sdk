@@ -8,8 +8,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/Apstrix-Solutions/facebook-marketing-api-golang-sdk/fb"
 	"github.com/PuerkitoBio/goquery"
-	"github.com/justwatchcom/facebook-marketing-api-golang-sdk/fb"
 	"golang.org/x/sync/errgroup"
 )
 
