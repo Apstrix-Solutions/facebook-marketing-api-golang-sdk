@@ -37,6 +37,17 @@ func (rb *RouteBuilder) Fields(f ...string) *RouteBuilder {
 	return rb
 }
 
+// Fields sets the fields query param.
+func (rb *RouteBuilder) Metrics(f ...string) *RouteBuilder {
+	if len(f) > 0 {
+		rb.v.Set("metric", strings.Join(f, ","))
+
+	} else {
+		rb.v.Del("metric")
+	}
+	return rb
+}
+
 // Limit sets the limit param.
 func (rb *RouteBuilder) Limit(limit int) *RouteBuilder {
 	if limit > -1 {
@@ -165,6 +176,18 @@ func (rb *RouteBuilder) DatePreset(s string) *RouteBuilder {
 		rb.v.Set("date_preset", s)
 	} else {
 		rb.v.Del("date_preset")
+	}
+
+	return rb
+}
+
+// DatePreset sets date_preset param and deletes the time_range one.
+func (rb *RouteBuilder) Period(s string) *RouteBuilder {
+
+	if s != "" {
+		rb.v.Set("period", s)
+	} else {
+		rb.v.Del("period")
 	}
 
 	return rb

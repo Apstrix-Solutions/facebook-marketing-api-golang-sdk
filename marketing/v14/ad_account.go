@@ -52,10 +52,37 @@ func (aas *AdAccountService) ListInstaAccounts(ctx context.Context, businessID s
 	return res, nil
 }
 
+// List lists all Instagram ad accounts that belong to this business.
+func (aas *AdAccountService) LongLivedUserToken(ctx context.Context, req *ShortTokenInfo) (*LongTokenInfo, error) {
+
+	resp := LongTokenInfo{}
+
+	err := aas.c.PostJSON(ctx, fb.NewRoute(Version, "/oauth/access_token").String(), req, &resp)
+
+	if err != nil {
+		return nil, err
+	}
+
+	return &resp, nil
+}
+
+type ShortTokenInfo struct {
+	GrantType    string `json:"grant_type,omitempty"`
+	AccessToken  string `json:"fb_exchange_token,omitempty"` //User Access Token
+	ClientId     string `json:"client_id,omitempty"`
+	ClientSecret string `json:"client_secret,omitempty"`
+}
+
+type LongTokenInfo struct {
+	AccessToken string `json:"access_token"`
+	TokenType   string `json:"token_type"`
+	ExpiresIn   int    `json:"expires_in"`
+}
+
 // FB Business Account represents an ad account.
 type FBBusinessAccount struct {
 	Id   string `json:"id"`
-	Name string `json:"name"`
+	Name string `json:"name,omitempty"`
 }
 
 // AdAccount represents an Facebook ad account.

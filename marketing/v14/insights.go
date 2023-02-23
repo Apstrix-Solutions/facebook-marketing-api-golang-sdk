@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/Apstrix-Solutions/facebook-marketing-api-golang-sdk/fb"
@@ -20,11 +21,43 @@ type InsightsService struct {
 	*fb.StatsContainer
 }
 
+type OrganicInsightsPostData struct {
+	Post_Id    string `json:"post_id,omitempty"`
+	DatePreset string `json:"period,omitempty"`
+	Data       []struct {
+		Name   string `json:"name"`
+		Period string `json:"period"`
+		Values []struct {
+			Value   int    `json:"value"`
+			EndTime string `json:"end_time"`
+		} `json:"values"`
+		Title       string `json:"title"`
+		Description string `json:"description"`
+		ID          string `json:"id"`
+	} `json:"data"`
+}
+
+// Insight AdData
+type AdDataInsights struct {
+	AdAccount_Id       string `json:"adaccount_id,omitempty"`
+	ReportLevel        string `json:"report_level,omitempty"`
+	DatePreset         string `json:"date_preset,omitempty"`
+	DailyTimeIncrement bool   `json:"daily_increment,omitempty"`
+}
+
 func newInsightsService(l log.Logger, c *fb.Client) *InsightsService {
 	return &InsightsService{
 		l:              l,
 		c:              c,
 		StatsContainer: fb.NewStatsContainer(),
+	}
+}
+
+// NewReport creates a new InsightsRequest.
+func (is *InsightsService) NewReport_Organic(account string) *InsightsRequest {
+	return &InsightsRequest{
+		InsightsService: is,
+		RouteBuilder:    fb.NewRoute(Version, "/%s/insights", account),
 	}
 }
 
@@ -59,6 +92,160 @@ func (ir *InsightsRequest) Download(ctx context.Context) ([]Insight, error) {
 	}
 
 	return res, nil
+}
+
+// Download returns all insights from the request in one slice.
+func (ir *InsightsRequest) CreatePostInsights(ctx context.Context) (*OrganicInsightsPostData, error) {
+	res := &OrganicInsightsPostData{}
+	// ir.RouteBuilder.DefaultSummary(true)
+
+	fmt.Println("Route Builder :", ir.RouteBuilder.String())
+	err := ir.c.GetJSON(ctx, ir.RouteBuilder.String(), res)
+	if err != nil {
+		return res, err
+	}
+
+	return res, nil
+}
+
+// Generate Custom Report
+func (ir *InsightsRequest) CreateReport(ctx context.Context) (*[]Insight, error) {
+
+	run := &struct {
+		ReportRunID            string `json:"report_run_id"`
+		AccountID              string `json:"account_id"`
+		TimeRef                int    `json:"time_ref"`
+		TimeCompleted          int    `json:"time_completed"`
+		AsyncStatus            string `json:"async_status"`
+		IsRunning              bool   `json:"is_running"`
+		AsyncPercentCompletion int    `json:"async_percent_completion"`
+		DateStart              string `json:"date_start"`
+		DateStop               string `json:"date_stop"`
+	}{}
+
+	ch := make(chan []Insight)
+
+	ir.RouteBuilder.DefaultSummary(true)
+	err := ir.c.PostJSON(ctx, ir.RouteBuilder.String(), nil, run)
+
+	fmt.Println("Report Id : ", run.ReportRunID)
+
+	if err != nil {
+		return nil, err
+	} else if run.ReportRunID == "" {
+		return nil, errors.New("did not get report run id")
+	}
+
+	stats := ir.StatsContainer.AddStats(run.ReportRunID)
+	if stats == nil {
+		return nil, fmt.Errorf("report run %s already being downloaded", run.ReportRunID)
+	}
+
+	url := fb.NewRoute(Version, "/%s/insights", run.ReportRunID).Limit(100).String()
+
+	defer func() {
+		ir.StatsContainer.RemoveStats(run.ReportRunID)
+		url := fb.NewRoute(Version, "/%s", run.ReportRunID).String()
+		e := ir.c.Delete(ctx, url)
+		if e != nil {
+			_ = level.Warn(ir.l).Log("msg", "err deleting report run", "id", run.ReportRunID, "err", e, "url", url)
+		}
+	}()
+
+	t := time.NewTicker(15 * time.Second)
+	timeout := time.NewTimer(10 * time.Minute)
+	lastPercentage := 0
+	defer timeout.Stop()
+	defer t.Stop()
+	for range t.C {
+		// non blocking timeout
+		select {
+		case <-timeout.C:
+			return nil, errors.New("report timeout")
+		default:
+		}
+		run.IsRunning = false // field is omitted when it is false, so we need to set it to false manually
+		err = ir.c.GetJSON(ctx, fb.NewRoute(Version, "/%s", run.ReportRunID).String(), run)
+		if err != nil {
+			return nil, err
+		}
+
+		if run.AsyncStatus == "Job Completed" && run.AsyncPercentCompletion == 100 && !run.IsRunning {
+			stats.SetCreated()
+
+			break
+		}
+		stats.SetProgress(uint64(run.AsyncPercentCompletion), 100)
+
+		if run.AsyncStatus == "Job Failed" {
+			return nil, errors.New("job failed")
+		}
+		// update timeline if report progresses
+		if run.AsyncPercentCompletion > lastPercentage {
+			lastPercentage = run.AsyncPercentCompletion
+			timeout.Reset(10 * time.Minute)
+		}
+	}
+
+	var impressions uint64
+
+	resp := &struct {
+		fb.Paging
+		Summary struct {
+			Impressions uint64 `json:"impressions,string"`
+		} `json:"summary"`
+		Data []Insight `json:"data"`
+	}{}
+
+	if url != "" {
+
+		insgs := []Insight{}
+		wg := &sync.WaitGroup{}
+		wg.Add(2)
+
+		go func(ch chan<- []Insight, wg *sync.WaitGroup) {
+
+			err := ir.c.GetJSON(ctx, url, resp)
+			if err != nil {
+				fmt.Printf("GetJson Error : %+v\n", err)
+			}
+
+			stats.SetProgress(impressions, resp.Summary.Impressions)
+			url = resp.Paging.Paging.Next
+			ch <- resp.Data
+			wg.Done()
+
+		}(ch, wg)
+
+		go func(ch <-chan []Insight, wg *sync.WaitGroup) {
+
+			val, isChannelOpen := <-ch
+			if isChannelOpen {
+				insgs = val
+			}
+			wg.Done()
+
+		}(ch, wg)
+
+		wg.Wait()
+		close(ch)
+
+		defer func() {
+			ir.StatsContainer.RemoveStats(run.ReportRunID)
+			url := fb.NewRoute(Version, "/%s", run.ReportRunID).String()
+			e := ir.c.Delete(ctx, url)
+			if e != nil {
+				_ = level.Warn(ir.l).Log("msg", "err deleting report run", "id", run.ReportRunID, "err", e, "url", url)
+			}
+		}()
+
+		return &insgs, nil
+
+	} else {
+
+		return nil, fmt.Errorf("empty url")
+	}
+
 }
 
 // GenerateReport creates the insights report, waits until it's finished building, reads to c and then deletes it.
@@ -132,6 +319,10 @@ func (ir *InsightsRequest) GenerateReport(ctx context.Context, c chan<- Insight)
 	}
 
 	url := fb.NewRoute(Version, "/%s/insights", run.ReportRunID).Limit(100).String()
+
+	fmt.Println("Report Url :", url)
+	fmt.Println("Run Status :", run.AsyncStatus)
+
 	var count, impressions uint64
 	for url != "" {
 		resp := &struct {
@@ -165,6 +356,7 @@ type Insight struct {
 	Actions                          ActionTypeValue        `json:"actions"`
 	AdsetID                          string                 `json:"adset_id"`
 	AdID                             string                 `json:"ad_id"`
+	AdName                           string                 `json:"ad_name"`
 	Objective                        string                 `json:"objective"`
 	AdsetName                        string                 `json:"adset_name"`
 	Age                              string                 `json:"age"`

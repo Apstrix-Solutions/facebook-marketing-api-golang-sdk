@@ -4,8 +4,6 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"net/http"
-	"net/url"
 	"strings"
 
 	"golang.org/x/sync/errgroup"
@@ -23,12 +21,29 @@ type PostService struct {
 type RespPost struct {
 	Posts struct {
 		Data []struct {
-			ID          string      `json:"id"`
-			Message     string      `json:"message"`
-			CreatedTime string      `json:"created_time"`
-			Attachments Attachments `json:"attachments"`
+			ID                  string      `json:"id"`
+			Message             string      `json:"message"`
+			CreatedTime         string      `json:"created_time"`
+			Attachments         Attachments `json:"attachments"`
+			StatusType          string      `json:"status_type,omitempty"`
+			IsExpired           bool        `json:"is_expired,omitempty"`
+			IsPublished         bool        `json:"is_published,omitempty"`
+			SchedulePublishTime string      `json:"sheduled_publish_time,omitempty"`
 		} `json:"data"`
 	} `json:"posts"`
+}
+
+type RespPost_PS struct {
+	Data []struct {
+		ID                  string      `json:"id,omitempty"`
+		Message             string      `json:"message,omitempty"`
+		CreatedTime         string      `json:"created_time,omitempty"`
+		Attachments         Attachments `json:"attachments,omitempty"`
+		StatusType          string      `json:"status_type,omitempty"`
+		IsExpired           bool        `json:"is_expired,omitempty"`
+		IsPublished         bool        `json:"is_published,omitempty"`
+		SchedulePublishTime string      `json:"sheduled_publish_time,omitempty"`
+	} `json:"data"`
 }
 
 type RespPost_Paid struct {
@@ -43,7 +58,7 @@ type RespPost_Paid struct {
 }
 
 type Attachments struct {
-	Data []AttachmentData `json:"data"`
+	Data []AttachmentData `json:"data,omitempty"`
 }
 
 type AttachmentData struct {
@@ -64,6 +79,7 @@ type AttachmentData struct {
 }
 
 type GetPostContent struct {
+	PageId  string   `json:"page_id,omitempty"`
 	Message string   `json:"message"`
 	Urls    []string `json:"url"`
 }
@@ -78,15 +94,12 @@ type PostPhotoAttachments struct {
 	Attachments []string `json:"attached_media"`
 }
 
-type PostPhotoReponse struct {
+type PostReponse struct {
 	Photo_ID string `json:"id"`
 }
 
-type PostMsgReponse struct {
-	Post_ID string `json:"id"`
-}
-
 type PostVideoContent struct {
+	PageId      string `json:"page_id,omitempty"`
 	FileUrl     string `json:"file_url"`
 	Description string `json:"description"`
 }
@@ -200,59 +213,57 @@ func (ps *PostService) GetInstaPost(ctx context.Context, id string) (*Post, erro
 //Publish Instagram Container/s
 
 // Publish a Content and Return Response with Post ID
-func (ps *PostService) CreateMsgPost(ctx context.Context, businessId string, content GetPostContent, pageAccessToken string) (*PostMsgReponse, error) {
+func (ps *PostService) CreateMsgPost(ctx context.Context, businessId string, content GetPostContent, pageAccessToken string) (*PostReponse, error) {
 
 	route := fb.NewRoute(Version, "/%s", businessId+"/feed").String()
-	data := url.Values{}
 
-	data.Add("message", content.Message)
-	data.Add("access_token", pageAccessToken)
+	req := struct {
+		Message string `json:"message"`
+	}{
+		Message: content.Message,
+	}
 
-	response, err := http.PostForm(route, data)
+	res := PostReponse{}
+
+	err := ps.c.PostJSON(ctx, route, req, &res)
 
 	if err != nil {
-
 		fmt.Println("Post Json Error : ", err)
 		return nil, err
 	}
 
-	r := PostMsgReponse{}
-	json.NewDecoder(response.Body).Decode(&r)
-	defer response.Body.Close()
-
-	return &r, nil
+	return &res, nil
 }
 
 // Publish a Content (Photo) and Return Response with Photo ID
-func (ps *PostService) UploadPhotoFB(ctx context.Context, businessId string, imageUrl string, pageAccessToken string) (*PostPhotoReponse, error) {
+func (ps *PostService) UploadPhotoFB(ctx context.Context, PageId string, imageUrl string, pageAccessToken string) (*PostReponse, error) {
 
-	route := fb.NewRoute(Version, "/%s", businessId+"/photos").String()
-	data := url.Values{}
+	route := fb.NewRoute(Version, "/%s", PageId+"/photos").String()
 
-	data.Add("url", imageUrl)
-	data.Add("published", "false")
-	data.Add("access_token", pageAccessToken)
+	req := struct {
+		Url       string `json:"url"`
+		Published string `json:"published"`
+	}{
+		Url:       imageUrl,
+		Published: "false",
+	}
 
-	response, err := http.PostForm(route, data)
+	res := PostReponse{}
+
+	err := ps.c.PostJSON(ctx, route, req, &res)
 
 	if err != nil {
-
 		fmt.Println("Post Json Error : ", err)
 		return nil, err
 	}
 
-	r := PostPhotoReponse{}
-	json.NewDecoder(response.Body).Decode(&r)
-	defer response.Body.Close()
-
-	return &r, nil
+	return &res, nil
 }
 
 // Publish a Content (Photo) and Return Response with Photo ID
-func (ps *PostService) PostContentWithPhotos(ctx context.Context, businessId string, content PostPhotoAttachments, pageAccessToken string) (*PostPhotoReponse, error) {
+func (ps *PostService) PostContentWithPhotos(ctx context.Context, PageId string, content PostPhotoAttachments, pageAccessToken string) (*PostReponse, error) {
 
-	route := fb.NewRoute(Version, "/%s", businessId+"/feed").String()
-	data := url.Values{}
+	route := fb.NewRoute(Version, "/%s", PageId+"/feed").String()
 
 	ids, err := json.Marshal(content.Attachments)
 
@@ -261,52 +272,56 @@ func (ps *PostService) PostContentWithPhotos(ctx context.Context, businessId str
 		return nil, err
 	}
 
-	data.Add("message", content.Message)
-	data.Add("attached_media", string(ids))
-	data.Add("access_token", pageAccessToken)
+	req := struct {
+		Message string `json:"message,omitempty"`
+		Media   string `json:"attached_media,omitempty"`
+	}{
+		Message: content.Message,
+		Media:   (string(ids)),
+	}
 
-	response, err := http.PostForm(route, data)
+	res := PostReponse{}
+
+	err = ps.c.PostJSON(ctx, route, req, &res)
 
 	if err != nil {
+
 		fmt.Println("Post Json Error : ", err)
 		return nil, err
 	}
 
-	r := PostPhotoReponse{}
+	return &res, nil
 
-	json.NewDecoder(response.Body).Decode(&r)
-	defer response.Body.Close()
-
-	return &r, nil
 }
 
 // Publish a Content (Video) and Return Response with Post Id
-func (ps *PostService) CreateVideoPost(ctx context.Context, businessId string, content PostVideoContent, pageAccessToken string) (*PostPhotoReponse, error) {
+func (ps *PostService) CreateVideoPost(ctx context.Context, businessId string, content PostVideoContent, pageAccessToken string) (*PostReponse, error) {
 
 	route := fb.NewRoute(Version, "/%s", businessId+"/videos").String()
-	data := url.Values{}
 
-	data.Add("file_url", content.FileUrl)
-	data.Add("description", content.Description)
-	data.Add("access_token", pageAccessToken)
+	req := struct {
+		FileUrl     string `json:"file_url,omitempty"`
+		Description string `json:"description,omitempty"`
+	}{
+		FileUrl:     content.FileUrl,
+		Description: content.Description,
+	}
 
-	response, err := http.PostForm(route, data)
+	res := PostReponse{}
+
+	err := ps.c.PostJSON(ctx, route, req, &res)
 
 	if err != nil {
+
 		fmt.Println("Post Json Error : ", err)
 		return nil, err
 	}
 
-	r := PostPhotoReponse{}
-
-	json.NewDecoder(response.Body).Decode(&r)
-	defer response.Body.Close()
-
-	return &r, nil
+	return &res, nil
 }
 
 // Get returns a single post.
-func (ps *PostService) Get(ctx context.Context, id string) (*Post, error) {
+func (ps *PostService) GetPost(ctx context.Context, id string) (*Post, error) {
 	res := &Post{}
 	err := ps.c.GetJSON(ctx, fb.NewRoute(Version, "/%s", id).Fields(postFields...).String(), res)
 	if err != nil {
@@ -334,7 +349,48 @@ func (ps *PostService) GetPosts(ctx context.Context, businessId string, urlParam
 	allPosts := []RespPost{}
 
 	err := ps.c.GetJSON(ctx, fb.NewRoute(Version, "/%s", businessId).Fields(urlParams...).String(), res)
-	// err := ps.c.GetJSON(ctx, fb.NewRoute(Version, "/%s", businessId).Fields("posts{id, message, attachments}").String(), res)
+
+	if err != nil {
+		if fb.IsNotFound(err) {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	allPosts = append(allPosts, *res)
+
+	return &allPosts, nil
+}
+
+// GetPosts returns all Scheduled posts under an account
+func (ps *PostService) GetScheduledPosts(ctx context.Context, PageID string, urlParams []string) (*[]RespPost_PS, error) {
+
+	res := &RespPost_PS{}
+	allPosts := []RespPost_PS{}
+
+	err := ps.c.GetJSON(ctx, fb.NewRoute(Version, "/%s/scheduled_posts", PageID).Fields(urlParams...).String(), res)
+
+	if err != nil {
+		if fb.IsNotFound(err) {
+			return nil, nil
+		}
+
+		return nil, err
+	}
+
+	allPosts = append(allPosts, *res)
+
+	return &allPosts, nil
+}
+
+// GetPosts returns all Published posts under an account
+func (ps *PostService) GetPublishedPosts(ctx context.Context, PageID string, urlParams []string) (*[]RespPost_PS, error) {
+
+	res := &RespPost_PS{}
+	allPosts := []RespPost_PS{}
+
+	err := ps.c.GetJSON(ctx, fb.NewRoute(Version, "/%s/published_posts", PageID).Fields(urlParams...).String(), res)
 
 	if err != nil {
 		if fb.IsNotFound(err) {
