@@ -2,10 +2,6 @@
 
 This go package provides a comprehensive list of methods for interacting with Facebook's Graph Marketing api.
 
----
-
-![JustWatch logo](logo.png)
-
 ## You enjoy working with the Facebook Marketing API? We are hiring! 
 
 Find out what open positions we have at the moment and why JustWatch is a great place to work at: https://www.justwatch.com/us/talent
